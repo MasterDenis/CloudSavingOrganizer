@@ -1,39 +1,52 @@
 import os
-import shutil
+import tkinter as tk
+from tkinter import filedialog
 
-def add_to_deletions_bat(original_folder):
-    with open(os.path.join("Directories", "deletions.bat"), "a") as f:
-        f.write(f"RD /S /Q \"{original_folder}\"\n")
+directories = os.path.join(os.path.dirname(__file__), "Directories")
+if not os.path.exists(directories):
+    os.mkdir(directories)
 
-def add_to_locations_bat(original_folder, new_folder):
-    with open(os.path.join("Directories", "locations.bat"), "a") as f:
-        f.write(f"mklink /J \"{original_folder}\" \"{new_folder}\"\n")
+deletions_file = os.path.join(directories, "deletions.bat")
+if not os.path.exists(deletions_file):
+    with open(deletions_file, 'w') as file:
+        file.write("")
 
-def main():
-    directories = os.path.join(os.path.dirname(__file__), "Directories")
-    if not os.path.exists(directories):
-        os.makedirs(directories)
+locations_file = os.path.join(directories, "locations.bat")
+if not os.path.exists(locations_file):
+    with open(locations_file, 'w') as file:
+        file.write("")
 
-    if not os.path.exists(os.path.join(directories, "deletions.bat")):
-        open(os.path.join(directories, "deletions.bat"), "w").close()
-    if not os.path.exists(os.path.join(directories, "locations.bat")):
-        open(os.path.join(directories, "locations.bat"), "w").close()
+root = tk.Tk()
+root.withdraw()
+original_folder = filedialog.askdirectory()
 
-    original_folder = input("Enter the original folder location: ")
-    new_folder = os.path.join(os.path.dirname(__file__), "SAVES", os.path.basename(original_folder))
+temp_file = os.path.join(directories, "temp_file.txt")
+with open(temp_file, 'w') as file:
+    file.write(original_folder)
 
-    if os.path.exists(original_folder):
-        add_to_deletions_bat(original_folder)
-        if os.path.exists(new_folder):
-            os.system(f"RD /S /Q \"{original_folder}\"")
-        else:
-            os.makedirs(os.path.dirname(new_folder), exist_ok=True)
-            shutil.move(original_folder, new_folder)
-            add_to_locations_bat(original_folder, new_folder)
+if not os.path.exists(original_folder):
+    print("The folder", original_folder, "does not exist.")
+    os.remove(temp_file)
+    exit(1)
+
+new_folder = os.path.join(os.path.dirname(__file__), "SAVES", os.path.basename(original_folder))
+
+if os.path.exists(original_folder):
+    with open(deletions_file, 'a') as file:
+        file.write("RD /S /Q \"" + original_folder + "\"\n")
+
+    if os.path.exists(new_folder):
+        os.system("RD /S /Q \"" + original_folder + "\"")
+        print("Original folder already exists and has been deleted.")
     else:
-        print(f"The folder {original_folder} does not exist.")
+        saves_folder = os.path.join(os.path.dirname(__file__), "SAVES")
+        if not os.path.exists(saves_folder):
+            os.mkdir(saves_folder)
+        os.system("move /y \"" + original_folder + "\" \"" + new_folder + "\"")
+        with open(locations_file, 'a') as file:
+            file.write("mklink /J \"" + original_folder + "\" \"" + new_folder + "\"\n")
+        print("Original folder has been moved to the new location.")
 
-    os.system(os.path.join(directories, "locations.bat"))
-
-if __name__ == "__main__":
-    main()
+os.system("call \"" + locations_file + "\"")
+os.system("call \"" + deletions_file + "\"")
+os.system("call \"" + locations_file + "\"")
