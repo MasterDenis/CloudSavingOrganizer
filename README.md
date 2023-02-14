@@ -40,6 +40,9 @@ If you would like to contribute to the development of CSO, you are welcome to su
 
 For any questions or issues with the program, please reach out to the author at direct.me/thedenis.
 
+## Donations
+Feel free to support the creator here: direct.me/thedenis
+
 ## License
 
 CSO is licensed under the [GPL 3.0](LICENSE).
