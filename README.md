@@ -4,7 +4,8 @@ CSO is a simple Python-based program designed to assist in moving folders from t
 
 ## Usage
 
-To use CSO, follow these steps:
+First Download the Latest Release, then...
+to use CSO, follow these steps:
 
 1. Ensure that the folder containing the RUN.py file is synced with your cloud provider of choice, it should be a suitable and trustworthy cloud syncing service.
 2. Double-click on the RUN.py file.
