@@ -7,15 +7,32 @@ from tkinter import filedialog, messagebox
 import re
 import time
 
-# --- CONFIGURATION ---
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-if getattr(sys, 'frozen', False):
-    SCRIPT_DIR = os.path.dirname(sys.executable)
+# --- ROBUST PATH FINDER (Fixes the "Temp" folder issue) ---
+def find_directories_folder():
+    """
+    Searches for the 'Directories' folder in likely locations.
+    Prioritizes Current Working Directory (where you double-clicked).
+    """
+    possible_bases = [
+        os.getcwd(),                          # 1. Where the user launched it from (Most likely correct)
+        os.path.dirname(os.path.abspath(sys.argv[0])), # 2. The script/exe path
+        os.path.dirname(sys.executable)       # 3. The Python interpreter/bootloader path
+    ]
+    
+    for base in possible_bases:
+        candidate = os.path.join(base, "Directories")
+        if os.path.exists(candidate):
+            return base, candidate
 
-DIRECTORIES_FOLDER = os.path.join(SCRIPT_DIR, "Directories")
+    # If we get here, we couldn't find it. Return the CWD to show a helpful error later.
+    return os.getcwd(), os.path.join(os.getcwd(), "Directories")
+
+# Initialize Paths
+SCRIPT_DIR, DIRECTORIES_FOLDER = find_directories_folder()
 SAVES_FOLDER = os.path.join(SCRIPT_DIR, "SAVES")
 LOCATIONS_FILE = os.path.join(DIRECTORIES_FOLDER, "locations.bat")
 
+# Ensure critical folders exist
 os.makedirs(DIRECTORIES_FOLDER, exist_ok=True)
 os.makedirs(SAVES_FOLDER, exist_ok=True)
 
@@ -29,6 +46,7 @@ def is_junction(path):
 
 def robust_copy(source, destination):
     cmd = ["robocopy", source, destination, "/E", "/COPY:DAT", "/R:3", "/W:2"]
+    # Suppress output unless error
     result = subprocess.run(cmd, capture_output=True, text=True)
     return result.returncode < 8
 
@@ -41,21 +59,18 @@ def create_mega_ignore(target_folder):
         except: pass
 
 def make_path_dynamic(path):
-    # Fixed docstring to avoid unicode error
-    """Converts absolute paths (e.g. C:\\Users\\Denis) to %USERPROFILE% format."""
-    user_profile = os.environ['USERPROFILE']
-    # Case-insensitive check
-    if path.lower().startswith(user_profile.lower()):
-        return f"%USERPROFILE%{path[len(user_profile):]}"
+    r"""Converts absolute paths to %USERPROFILE% format."""
+    try:
+        user_profile = os.environ['USERPROFILE']
+        if path.lower().startswith(user_profile.lower()):
+            return f"%USERPROFILE%{path[len(user_profile):]}"
+    except:
+        pass
     return path
 
 def create_location_txt(target_folder, original_path):
-    """Creates Location.txt using the PORTABLE (%USERPROFILE%) syntax."""
     loc_file = os.path.join(target_folder, "Location.txt")
-    
-    # FORCE DYNAMIC PATH before writing
     final_path = make_path_dynamic(original_path)
-    
     try:
         with open(loc_file, "w") as f:
             f.write(f"Original Location:\n{final_path}")
@@ -75,6 +90,11 @@ def action_migrate_folder():
     root = tk.Tk()
     root.withdraw()
     
+    # Pre-check: Does Directories exist?
+    if not os.path.exists(LOCATIONS_FILE):
+        messagebox.showerror("Critical Error", f"Cannot find 'locations.bat'!\n\nI am looking in:\n{DIRECTORIES_FOLDER}\n\nPlease ensure the 'Directories' folder is next to the .exe.")
+        return
+
     original_path = filedialog.askdirectory(title="Select Save Folder")
     if not original_path: return
     
@@ -92,13 +112,11 @@ def action_migrate_folder():
         messagebox.showerror("Collision", "Folder exists in Cloud.")
         return
 
-    print(f"--- Migrating: {folder_name} ---")
     if not robust_copy(original_path, cloud_target):
         messagebox.showerror("Error", "Copy failed.")
         if os.path.exists(cloud_target): shutil.rmtree(cloud_target)
         return
 
-    # Create Metadata (Now uses Dynamic Path)
     create_location_txt(cloud_target, original_path)
     create_mega_ignore(cloud_target)
 
@@ -110,7 +128,6 @@ def action_migrate_folder():
         shutil.rmtree(cloud_target)
         return
 
-    # Use Dynamic path for batch, Real path for immediate execution
     dynamic_path = make_path_dynamic(original_path)
     batch_cmd = f'mklink /J "{dynamic_path}" "{cloud_target}"'
     real_cmd = f'mklink /J "{original_path}" "{cloud_target}"'
@@ -119,7 +136,6 @@ def action_migrate_folder():
         subprocess.run(f'cmd /c {real_cmd}', check=True, shell=True)
         append_to_locations(batch_cmd)
     except subprocess.CalledProcessError:
-        print("Rollback...")
         os.rename(backup_path, original_path)
         return
 
@@ -129,30 +145,34 @@ def action_migrate_folder():
     except:
         messagebox.showwarning("Warning", f"Delete backup manually:\n{backup_path}")
 
-# --- REPAIR ---
+# --- REPAIR (Fixed NameError) ---
 
 def action_repair_links():
     if not os.path.exists(LOCATIONS_FILE):
-        messagebox.showinfo("Info", "No locations.bat found.")
+        messagebox.showerror("Error", f"Cannot find 'locations.bat'!\n\nI am looking in:\n{DIRECTORIES_FOLDER}")
         return
 
     print("--- Dynamic Maintenance ---")
     with open(LOCATIONS_FILE, 'r') as f: lines = f.readlines()
 
     refreshed, collisions = 0, 0
-    pattern = re.compile(r'mklink\s+/J\s+"([^"]+)"\s+"([^"]+)"', re.IGNORECASE)
+    pattern = re.compile(r'mklink\s+(?:/J|/D)\s+"([^"]+)"\s+"([^"]+)"', re.IGNORECASE)
 
     for line in lines:
         match = pattern.search(line)
         if match:
             raw_link, raw_target = match.groups()
             
-            # Resolve %USERPROFILE% for current machine
             link_path = os.path.expandvars(raw_link)
             target_path = os.path.expandvars(raw_target)
+            
+            # --- FIX: Define folder_name HERE, before checking target ---
             folder_name = os.path.basename(link_path)
 
-            if not os.path.exists(target_path): continue
+            if not os.path.exists(target_path): 
+                # Optional: Print that we are skipping it
+                # print(f"Skipping missing target: {folder_name}")
+                continue
             
             print(f"Checking: {folder_name}...")
             
@@ -179,8 +199,7 @@ def action_repair_links():
 
 def main():
     root = tk.Tk()
-    root.title("Save Manager v5.1")
-    # Center window
+    root.title("Save Manager v6.0")
     w, h = 300, 150
     ws, hs = root.winfo_screenwidth(), root.winfo_screenheight()
     root.geometry(f'{w}x{h}+{int((ws/2)-(w/2))}+{int((hs/2)-(h/2))}')
@@ -188,6 +207,10 @@ def main():
     tk.Label(root, text="Select Operation:", font=("Arial", 10, "bold")).pack(pady=10)
     tk.Button(root, text="Migrate New Save", width=20, command=action_migrate_folder).pack(pady=5)
     tk.Button(root, text="Repair / Refresh Links", width=20, command=action_repair_links).pack(pady=5)
+    
+    # UI Note to user about location
+    tk.Label(root, text=f"Active Folder: {os.path.basename(SCRIPT_DIR)}", font=("Arial", 7), fg="gray").pack(side=tk.BOTTOM, pady=2)
+
     root.mainloop()
 
 if __name__ == "__main__":
