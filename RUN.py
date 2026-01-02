@@ -41,7 +41,8 @@ def create_mega_ignore(target_folder):
         except: pass
 
 def make_path_dynamic(path):
-    """Converts C:\Users\Denis\... to %USERPROFILE%\..."""
+    # Fixed docstring to avoid unicode error
+    """Converts absolute paths (e.g. C:\\Users\\Denis) to %USERPROFILE% format."""
     user_profile = os.environ['USERPROFILE']
     # Case-insensitive check
     if path.lower().startswith(user_profile.lower()):
@@ -179,6 +180,7 @@ def action_repair_links():
 def main():
     root = tk.Tk()
     root.title("Save Manager v5.1")
+    # Center window
     w, h = 300, 150
     ws, hs = root.winfo_screenwidth(), root.winfo_screenheight()
     root.geometry(f'{w}x{h}+{int((ws/2)-(w/2))}+{int((hs/2)-(h/2))}')
